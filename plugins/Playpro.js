@@ -50,7 +50,7 @@ module.exports = async (msg, { conn, text }) => {
 
   const caption = `
 ╔═══════════════╗
-║✦ 𝘼𝙕𝙐𝙍𝘼 𝙐𝗹𝘁𝗋𝗮 SUBBOTS✦
+║✦ 𝘼𝙕𝙐𝙍𝘼 𝙐𝗹𝘁𝗋𝗮 2.0 BOT✦
 ╚═══════════════╝
 📀 Info del video:
 ╭───────────────╮
@@ -71,7 +71,7 @@ module.exports = async (msg, { conn, text }) => {
 ┣ 🎥 ${pref}play6 ${text}
 ┗ ⚠️ ${pref}ff
 ═════════════════════
-   𖥔 Azura SUBBOTS 𖥔
+   𖥔 Azura Ultra 2.0 Bot 𖥔
 ═════════════════════`.trim();
 
   // envía preview
@@ -218,4 +218,4 @@ async function downloadVideo(conn, job, asDocument, quoted) {
   fs.unlinkSync(file);
 }
 
-module.exports.command = ["play2"];
+module.exports.command = ["play"];

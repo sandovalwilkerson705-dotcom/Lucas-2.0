@@ -1223,53 +1223,57 @@ case 'tag': {
 
 
 case 'linia': {
-    const fs = require('fs');
-    const path = require('path');
+  const fs = require("fs");
+  const path = require("path");
 
-    if (!isOwner) {
-        await sock.sendMessage(msg.key.remoteJid, {
-            text: '⛔ Este comando es solo para el *Owner*.'
-        }, { quoted: msg });
-        break;
-    }
-
-    if (!text) {
-        await sock.sendMessage(msg.key.remoteJid, {
-            text: `✳️ Usa el comando correctamente:\n\n📌 Ejemplo: *${global.prefix}linia play*`
-        }, { quoted: msg });
-        break;
-    }
-
-    const filePath = path.join(__dirname, 'main.js'); // Aquí ahora apunta a main.js
-
-    try {
-        const lines = fs.readFileSync(filePath, 'utf-8').split('\n');
-        let found = false;
-
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes(`case '${text}'`)) {
-                await sock.sendMessage(msg.key.remoteJid, {
-                    text: `✅ El comando *${text}* está en la línea *${i + 1}* del archivo *main.js*.`
-                }, { quoted: msg });
-                found = true;
-                break;
-            }
-        }
-
-        if (!found) {
-            await sock.sendMessage(msg.key.remoteJid, {
-                text: `❌ No se encontró el comando *${text}* en el archivo *main.js*.`
-            }, { quoted: msg });
-        }
-
-    } catch (err) {
-        console.error(err);
-        await sock.sendMessage(msg.key.remoteJid, {
-            text: `❌ Error al leer el archivo: ${err.message}`
-        }, { quoted: msg });
-    }
-
+  if (!isOwner) {
+    await sock.sendMessage(msg.key.remoteJid, {
+      text: "⛔ Este comando es solo para el *Owner*."
+    }, { quoted: msg });
     break;
+  }
+
+  const buscar = args[0];
+  if (!buscar) {
+    await sock.sendMessage(msg.key.remoteJid, {
+      text: "📍 Especifica el comando que deseas buscar.\n\nEjemplo: *.linia play*"
+    }, { quoted: msg });
+    break;
+  }
+
+  const archivoMain = path.join(__dirname, "main.js");
+
+  if (!fs.existsSync(archivoMain)) {
+    await sock.sendMessage(msg.key.remoteJid, {
+      text: "❌ No se encontró el archivo *main.js*."
+    }, { quoted: msg });
+    break;
+  }
+
+  const contenido = fs.readFileSync(archivoMain, "utf-8");
+  const lineas = contenido.split("\n");
+  let lineaEncontrada = -1;
+
+  for (let i = 0; i < lineas.length; i++) {
+    const linea = lineas[i].trim();
+    const regex = new RegExp(`^case ['"\`]${buscar}['"\`]:`);
+    if (regex.test(linea)) {
+      lineaEncontrada = i + 1; // porque queremos número de línea 1-based
+      break;
+    }
+  }
+
+  if (lineaEncontrada !== -1) {
+    await sock.sendMessage(msg.key.remoteJid, {
+      text: `✅ El comando *${buscar}* fue encontrado en la línea *${lineaEncontrada}* de *main.js*.`
+    }, { quoted: msg });
+  } else {
+    await sock.sendMessage(msg.key.remoteJid, {
+      text: `❌ El comando *${buscar}* no se encontró en *main.js*.`
+    }, { quoted: msg });
+  }
+
+  break;
 }
         
   case 'ff': {
@@ -13930,83 +13934,116 @@ case "get": {
     
 case "ver": {
     try {
-        if (!msg.message.extendedTextMessage || 
-            !msg.message.extendedTextMessage.contextInfo || 
-            !msg.message.extendedTextMessage.contextInfo.quotedMessage) {
+        
+        const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+        if (!quoted) {
             return sock.sendMessage(
                 msg.key.remoteJid,
-                { text: "❌ *Error:* Debes responder a un mensaje de *ver una sola vez* (imagen, video o audio) para poder verlo nuevamente." },
+                { text: "❌ *Error:* Debes responder a una imagen, video o nota de voz para reenviarla." },
                 { quoted: msg }
             );
         }
 
-        const quotedMsg = msg.message.extendedTextMessage.contextInfo.quotedMessage;
-        let mediaType, mediaMessage;
+       
+        const unwrap = m => {
+            let node = m;
+            while (
+                node?.viewOnceMessage?.message          ||
+                node?.viewOnceMessageV2?.message        ||
+                node?.viewOnceMessageV2Extension?.message ||
+                node?.ephemeralMessage?.message
+            ) {
+                node =
+                    node.viewOnceMessage?.message            ||
+                    node.viewOnceMessageV2?.message          ||
+                    node.viewOnceMessageV2Extension?.message ||
+                    node.ephemeralMessage?.message           ||
+                    node;
+            }
+            return node;
+        };
+        const inner = unwrap(quoted);
 
-        if (quotedMsg.imageMessage?.viewOnce) {
-            mediaType = "image";
-            mediaMessage = quotedMsg.imageMessage;
-        } else if (quotedMsg.videoMessage?.viewOnce) {
-            mediaType = "video";
-            mediaMessage = quotedMsg.videoMessage;
-        } else if (quotedMsg.audioMessage?.viewOnce) {
+        
+        let mediaType, mediaMsg;
+        if (inner.imageMessage) {
+            mediaType = "image"; mediaMsg = inner.imageMessage;
+        } else if (inner.videoMessage) {
+            mediaType = "video"; mediaMsg = inner.videoMessage;
+        } else if (inner.audioMessage || inner.voiceMessage || inner.pttMessage) {
+            
             mediaType = "audio";
-            mediaMessage = quotedMsg.audioMessage;
+            mediaMsg  = inner.audioMessage || inner.voiceMessage || inner.pttMessage;
         } else {
             return sock.sendMessage(
                 msg.key.remoteJid,
-                { text: "❌ *Error:* Solo puedes usar este comando en mensajes de *ver una sola vez*." },
+                { text: "❌ *Error:* El mensaje citado no contiene un archivo compatible." },
                 { quoted: msg }
             );
         }
 
-        // Enviar reacción mientras procesa
+        
         await sock.sendMessage(msg.key.remoteJid, {
-            react: { text: "⏳", key: msg.key } 
+            react: { text: "⏳", key: msg.key }
         });
 
-        // Descargar el multimedia de forma segura
-        const mediaStream = await new Promise(async (resolve, reject) => {
+        
+        const mediaBuffer = await (async () => {
             try {
-                const stream = await downloadContentFromMessage(mediaMessage, mediaType);
-                let buffer = Buffer.alloc(0);
-                for await (const chunk of stream) {
-                    buffer = Buffer.concat([buffer, chunk]);
-                }
-                resolve(buffer);
-            } catch (err) {
-                reject(null);
-            }
-        });
+                const stream = await downloadContentFromMessage(mediaMsg, mediaType);
+                let buf = Buffer.alloc(0);
+                for await (const chunk of stream) buf = Buffer.concat([buf, chunk]);
+                return buf;
+            } catch { return null; }
+        })();
 
-        if (!mediaStream || mediaStream.length === 0) {
-            await sock.sendMessage(msg.key.remoteJid, { text: "❌ *Error:* No se pudo descargar el archivo. Intenta de nuevo." }, { quoted: msg });
-            return;
+        if (!mediaBuffer?.length) {
+            return sock.sendMessage(
+                msg.key.remoteJid,
+                { text: "❌ *Error:* No se pudo descargar el archivo. Intenta de nuevo." },
+                { quoted: msg }
+            );
         }
 
-        // Enviar el archivo descargado al grupo o chat
-        let messageOptions = {
-            mimetype: mediaMessage.mimetype,
-        };
+        
+        const credit  = "> 🔓 Recuperado por:\n\`Azura Ultra`";
+        const opts    = { mimetype: mediaMsg.mimetype };
 
         if (mediaType === "image") {
-            messageOptions.image = mediaStream;
+            opts.image   = mediaBuffer;
+            opts.caption = credit;                
         } else if (mediaType === "video") {
-            messageOptions.video = mediaStream;
-        } else if (mediaType === "audio") {
-            messageOptions.audio = mediaStream;
+            opts.video   = mediaBuffer;
+            opts.caption = credit;               
+        } else { 
+            opts.audio   = mediaBuffer;
+            opts.ptt     = mediaMsg.ptt ?? true;  
+            if (mediaMsg.seconds) opts.seconds = mediaMsg.seconds; 
         }
 
-        await sock.sendMessage(msg.key.remoteJid, messageOptions, { quoted: msg });
+        await sock.sendMessage(msg.key.remoteJid, opts, { quoted: msg });
 
-        // Confirmar que el archivo ha sido enviado con éxito
+        
+        if (mediaType === "audio") {
+            await sock.sendMessage(
+                msg.key.remoteJid,
+                { text: credit },
+                { quoted: msg }
+            );
+        }
+
+        
         await sock.sendMessage(msg.key.remoteJid, {
-            react: { text: "✅", key: msg.key } 
+            react: { text: "✅", key: msg.key }
         });
 
-    } catch (error) {
-        console.error("❌ Error en el comando ver:", error);
-        await sock.sendMessage(msg.key.remoteJid, { text: "❌ *Error:* No se pudo recuperar el mensaje de *ver una sola vez*. Inténtalo de nuevo." }, { quoted: msg });
+    } catch (err) {
+        console.error("❌ Error en comando ver:", err);
+        await sock.sendMessage(
+            msg.key.remoteJid,
+            { text: "❌ *Error:* Hubo un problema al procesar el archivo." },
+            { quoted: msg }
+        );
     }
     break;
 }

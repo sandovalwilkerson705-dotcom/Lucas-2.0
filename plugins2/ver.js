@@ -1,72 +1,88 @@
-const fs = require("fs");
-const path = require("path");
 const { downloadContentFromMessage } = require("@whiskeysockets/baileys");
 
 const handler = async (msg, { conn }) => {
-  const rawID = conn.user?.id || "";
-  const subbotID = rawID.split(":")[0] + "@s.whatsapp.net";
-
-  const prefixPath = path.resolve("prefixes.json");
-  let prefixes = {};
-  if (fs.existsSync(prefixPath)) {
-    prefixes = JSON.parse(fs.readFileSync(prefixPath, "utf-8"));
-  }
-  const usedPrefix = prefixes[subbotID] || ".";
-
-  const quotedInfo = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
-  if (!quotedInfo) {
-    return await conn.sendMessage(msg.key.remoteJid, {
-      text: "❌ *Error:* Debes responder a un mensaje de *ver una sola vez* (imagen, video o audio) para poder verlo nuevamente."
-    }, { quoted: msg });
-  }
-
-  let mediaType, mediaMessage;
-  if (quotedInfo.imageMessage?.viewOnce) {
-    mediaType = "image";
-    mediaMessage = quotedInfo.imageMessage;
-  } else if (quotedInfo.videoMessage?.viewOnce) {
-    mediaType = "video";
-    mediaMessage = quotedInfo.videoMessage;
-  } else if (quotedInfo.audioMessage?.viewOnce) {
-    mediaType = "audio";
-    mediaMessage = quotedInfo.audioMessage;
-  } else {
-    return await conn.sendMessage(msg.key.remoteJid, {
-      text: "❌ *Error:* Solo puedes usar este comando en mensajes de *ver una sola vez*."
-    }, { quoted: msg });
-  }
-
-  await conn.sendMessage(msg.key.remoteJid, {
-    react: { text: "⏳", key: msg.key }
-  });
-
-  const mediaStream = await new Promise(async (resolve, reject) => {
-    try {
-      const stream = await downloadContentFromMessage(mediaMessage, mediaType);
-      let buffer = Buffer.alloc(0);
-      for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-      resolve(buffer);
-    } catch {
-      reject(null);
+  try {
+    const quoted = msg.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    if (!quoted) {
+      return await conn.sendMessage(msg.key.remoteJid, {
+        text: "❌ *Error:* Debes responder a una imagen, video o nota de voz para reenviarla."
+      }, { quoted: msg });
     }
-  });
 
-  if (!mediaStream || mediaStream.length === 0) {
-    return await conn.sendMessage(msg.key.remoteJid, {
-      text: "❌ *Error:* No se pudo descargar el archivo. Intenta de nuevo."
+    const unwrap = m => {
+      let node = m;
+      while (
+        node?.viewOnceMessage?.message ||
+        node?.viewOnceMessageV2?.message ||
+        node?.viewOnceMessageV2Extension?.message ||
+        node?.ephemeralMessage?.message
+      ) {
+        node =
+          node.viewOnceMessage?.message ||
+          node.viewOnceMessageV2?.message ||
+          node.viewOnceMessageV2Extension?.message ||
+          node.ephemeralMessage?.message;
+      }
+      return node;
+    };
+
+    const inner = unwrap(quoted);
+
+    let mediaType, mediaMsg;
+    if (inner.imageMessage) {
+      mediaType = "image"; mediaMsg = inner.imageMessage;
+    } else if (inner.videoMessage) {
+      mediaType = "video"; mediaMsg = inner.videoMessage;
+    } else if (inner.audioMessage || inner.voiceMessage || inner.pttMessage) {
+      mediaType = "audio";
+      mediaMsg = inner.audioMessage || inner.voiceMessage || inner.pttMessage;
+    } else {
+      return await conn.sendMessage(msg.key.remoteJid, {
+        text: "❌ *Error:* El mensaje citado no contiene un archivo compatible."
+      }, { quoted: msg });
+    }
+
+    await conn.sendMessage(msg.key.remoteJid, {
+      react: { text: "⏳", key: msg.key }
+    });
+
+    const stream = await downloadContentFromMessage(mediaMsg, mediaType);
+    let buf = Buffer.alloc(0);
+    for await (const chunk of stream) buf = Buffer.concat([buf, chunk]);
+
+    const credit = "> 🔓 Recuperado por:\n`Azura Ultra`";
+    const opts = { mimetype: mediaMsg.mimetype };
+
+    if (mediaType === "image") {
+      opts.image = buf;
+      opts.caption = credit;
+    } else if (mediaType === "video") {
+      opts.video = buf;
+      opts.caption = credit;
+    } else {
+      opts.audio = buf;
+      opts.ptt = mediaMsg.ptt ?? true;
+      if (mediaMsg.seconds) opts.seconds = mediaMsg.seconds;
+    }
+
+    await conn.sendMessage(msg.key.remoteJid, opts, { quoted: msg });
+
+    if (mediaType === "audio") {
+      await conn.sendMessage(msg.key.remoteJid, {
+        text: credit
+      }, { quoted: msg });
+    }
+
+    await conn.sendMessage(msg.key.remoteJid, {
+      react: { text: "✅", key: msg.key }
+    });
+
+  } catch (err) {
+    console.error("❌ Error en comando ver:", err);
+    await conn.sendMessage(msg.key.remoteJid, {
+      text: "❌ *Error:* Hubo un problema al procesar el archivo."
     }, { quoted: msg });
   }
-
-  let messageOptions = { mimetype: mediaMessage.mimetype };
-  if (mediaType === "image") messageOptions.image = mediaStream;
-  if (mediaType === "video") messageOptions.video = mediaStream;
-  if (mediaType === "audio") messageOptions.audio = mediaStream;
-
-  await conn.sendMessage(msg.key.remoteJid, messageOptions, { quoted: msg });
-
-  await conn.sendMessage(msg.key.remoteJid, {
-    react: { text: "✅", key: msg.key }
-  });
 };
 
 handler.command = ["ver"];

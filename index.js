@@ -507,7 +507,39 @@ sock.ev.on("messages.upsert", async (messageUpsert) => {
         }
       } 
   //fin de antilink por grupo    
-    
+// === INICIO LÓGICA ANTIPRIVADO ===
+try {
+  const chatId = msg.key.remoteJid;
+  const senderId = msg.key.participant || msg.key.remoteJid;
+  const isGroup = chatId.endsWith("@g.us");
+  const isFromMe = msg.key.fromMe;
+
+  const senderClean = senderId.replace(/[^0-9]/g, "");
+  const botNumber = sock.user.id.split(":")[0];
+  const isOwner = global.owner.some(([id]) => id === senderClean);
+
+  const activosPath = "./activos.json";
+  const activos = fs.existsSync(activosPath)
+    ? JSON.parse(fs.readFileSync(activosPath, "utf-8"))
+    : {};
+
+  // ✅ Solo bloquear si:
+  // - no es grupo
+  // - no es owner
+  // - no es el propio bot (fromMe = false)
+  if (!isGroup && activos.antiprivado && !isOwner && !isFromMe) {
+    await sock.updateBlockStatus(senderId, "block");
+
+    await sock.sendMessage("15167096032@s.whatsapp.net", {
+      text: `🚫 Se bloqueó automáticamente a: wa.me/${senderClean} por escribir en privado al bot.`
+    });
+
+    return;
+  }
+} catch (e) {
+  console.error("❌ Error en lógica antiprivado:", e);
+}
+// === FIN LÓGICA ANTIPRIVADO ===
 // === INICIO LÓGICA ANTIS STICKERS (15s, 3 strikes, sin notificación de desbloqueo) ===
 const stickerMsg = msg.message?.stickerMessage || msg.message?.ephemeralMessage?.message?.stickerMessage;
 

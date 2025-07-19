@@ -78,10 +78,10 @@ async function perplexityQuery(q, prompt) {
   return data.response;
 }
   //lumi
-  const axios = require("axios");
-const fetch = require("node-fetch");
-const { cargarSubbots } = require("./indexsubbots");
-
+    const axios = require("axios");
+    const fetch = require("node-fetch");
+    const { cargarSubBots } = require("./indexsubbots");
+    await cargarSubBots()
     const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require("@whiskeysockets/baileys");
     const chalk = require("chalk");
     const yargs = require('yargs/yargs')
@@ -326,7 +326,37 @@ sock.ev.on("group-participants.update", async (update) => {
     // Si la función antiarabe está activada en este grupo...
     if (activos.antiarabe && activos.antiarabe[update.id]) {
       // Lista de prefijos prohibidos (sin el signo +)
-      const disallowedPrefixes = ["20", "212", "213", "216", "218", "222", "249", "252", "253", "269", "962", "963", "964", "965", "966", "967", "968", "970", "971", "973", "974"];
+      const disallowedPrefixes = [
+  "20",   // Egipto 🇪🇬
+  "212",  // Marruecos 🇲🇦
+  "213",  // Argelia 🇩🇿
+  "216",  // Túnez 🇹🇳
+  "218",  // Libia 🇱🇾
+  "222",  // Mauritania 🇲🇷
+  "224",  // Guinea (algunos bots árabes)
+  "249",  // Sudán 🇸🇩
+  "252",  // Somalia 🇸🇴
+  "253",  // Yibuti 🇩🇯
+  "269",  // Comoras 🇰🇲
+  "961",  // Líbano 🇱🇧
+  "962",  // Jordania 🇯🇴
+  "963",  // Siria 🇸🇾
+  "964",  // Irak 🇮🇶
+  "965",  // Kuwait 🇰🇼
+  "966",  // Arabia Saudita 🇸🇦
+  "967",  // Yemen 🇾🇪
+  "968",  // Omán 🇴🇲
+  "970",  // Palestina 🇵🇸
+  "971",  // Emiratos Árabes Unidos 🇦🇪
+  "972",  // Israel (árabes usan sims aquí) 🇮🇱
+  "973",  // Baréin 🇧🇭
+  "974",  // Catar 🇶🇦
+  "975",  // Bután (no árabe, pero spamean desde ahí)
+  "976",  // Mongolia (se infiltran bots desde aquí)
+  "980",  // Temporal / bots árabes
+  "992",  // Tayikistán (usuarios árabes islámicos)
+  "998"   // Uzbekistán (también islámico)
+];
       if (update.action === "add") {
         // Obtener metadata del grupo para verificar administradores
         let groupMetadata = {};
@@ -770,65 +800,7 @@ if (msg.message?.protocolMessage?.type === 0) {
 }
 // === FIN DETECCIÓN DE MENSAJE ELIMINADO ===    
     
-// === LÓGICA DE RESPUESTA AUTOMÁTICA CON PALABRA CLAVE ===
-try {
-  const guarPath = path.resolve('./guar.json');
-  if (fs.existsSync(guarPath)) {
-    const guarData = JSON.parse(fs.readFileSync(guarPath, 'utf-8'));
 
-    // Normalizar mensaje: sin espacios, tildes, mayúsculas ni símbolos
-    const cleanText = messageText
-      .toLowerCase()
-      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^\w]/g, '');
-
-    for (const key of Object.keys(guarData)) {
-      const cleanKey = key
-        .toLowerCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^\w]/g, '');
-
-      if (cleanText === cleanKey) {
-        const item = guarData[key];
-        const buffer = Buffer.from(item.buffer, 'base64');
-
-        let payload = {};
-
-        switch (item.extension) {
-          case 'jpg':
-          case 'jpeg':
-          case 'png':
-            payload.image = buffer;
-            break;
-          case 'mp4':
-            payload.video = buffer;
-            break;
-          case 'mp3':
-          case 'ogg':
-          case 'opus':
-            payload.audio = buffer;
-            payload.mimetype = item.mimetype || 'audio/mpeg';
-            payload.ptt = false; // ← Cambia a true si quieres que lo envíe como nota de voz
-            break;
-          case 'webp':
-            payload.sticker = buffer;
-            break;
-          default:
-            payload.document = buffer;
-            payload.mimetype = item.mimetype || "application/octet-stream";
-            payload.fileName = `archivo.${item.extension}`;
-            break;
-        }
-
-        await sock.sendMessage(chatId, payload, { quoted: msg });
-        return; // ← evitar que siga procesando si ya se encontró una coincidencia
-      }
-    }
-  }
-} catch (e) {
-  console.error("❌ Error al revisar guar.json:", e);
-}
-// === FIN LÓGICA DE RESPUESTA AUTOMÁTICA CON PALABRA CLAVE ===
 // === INICIO LÓGICA CHATGPT POR GRUPO ===
 try {
   const activos = fs.existsSync("./activos.json") ? JSON.parse(fs.readFileSync("./activos.json", "utf-8")) : {};
@@ -1021,6 +993,62 @@ try {
   console.error("❌ Error al ejecutar comando desde sticker:", err);
 }
 // === FIN LÓGICA COMANDOS DESDE STICKER ===       
+// === LÓGICA DE RESPUESTA AUTOMÁTICA CON PALABRA CLAVE ===
+try {
+  /* 1️⃣  “modoAdmins” YA NO bloquea la respuesta:
+         solo lo consultamos por si más adelante quieres usarlo.        */
+  const actPath = path.resolve('./activos.json');
+  const modoAdminsOn =
+    isGroup &&
+    fs.existsSync(actPath) &&
+    (JSON.parse(fs.readFileSync(actPath, 'utf-8')).modoAdmins?.[chatId] === true);
+
+  /* 2️⃣  Procesar guar.json */
+  const guarPath = path.resolve('./guar.json');
+  if (fs.existsSync(guarPath)) {
+    const guarData  = JSON.parse(fs.readFileSync(guarPath, 'utf-8'));
+    const cleanText = messageText
+      .toLowerCase()
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^\w]/g, '');
+
+    for (const key of Object.keys(guarData)) {
+      const cleanKey = key
+        .toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w]/g, '');
+
+      if (cleanText === cleanKey) {
+        const item   = guarData[key];
+        const buffer = Buffer.from(item.buffer, 'base64');
+        const payload = {};
+
+        switch (item.extension) {
+          case 'jpg':
+          case 'jpeg':
+          case 'png':  payload.image  = buffer; break;
+          case 'mp4':  payload.video  = buffer; break;
+          case 'mp3':
+          case 'ogg':
+          case 'opus': payload.audio    = buffer;
+                       payload.mimetype = item.mimetype || 'audio/mpeg';
+                       payload.ptt      = false;                break;
+          case 'webp': payload.sticker = buffer; break;
+          default:     payload.document = buffer;
+                       payload.mimetype = item.mimetype || 'application/octet-stream';
+                       payload.fileName = `archivo.${item.extension}`;
+                       break;
+        }
+
+        await sock.sendMessage(chatId, payload, { quoted: msg });
+        return;   // coincidencia encontrada
+      }
+    }
+  }
+} catch (e) {
+  console.error("❌ Error en lógica de palabra clave:", e);
+}
+// === FIN LÓGICA DE RESPUESTA AUTOMÁTICA CON PALABRA CLAVE ===
     
 // === INICIO BLOQUEO DE MENSAJES DE USUARIOS MUTEADOS ===
 try {
@@ -1133,6 +1161,50 @@ try {
   console.error("❌ Error procesando bloqueo de usuarios baneados:", e);
 }
 // === FIN BLOQUEO DE COMANDOS A USUARIOS BANEADOS ===    
+// === INICIO BLOQUEO AUTOMÁTICO DE NÚMEROS ÁRABES EN PRIVADO ===
+try {
+  const chatId = msg.key.remoteJid;
+  const isGroup = chatId.endsWith("@g.us");
+
+  if (!isGroup) {
+    const sender = msg.key.participant || msg.key.remoteJid;
+    const senderNum = sender.replace(/[^0-9]/g, "");
+
+    // Lista de prefijos telefónicos árabes
+    const disallowedPrefixes = [
+      "20", "212", "213", "216", "218", "222", "249", "252",
+      "253", "269", "962", "963", "964", "965", "966", "967",
+      "968", "970", "971", "972", "973", "974", "975", "976",
+      "977", "980", "981", "982", "983", "984", "985", "986", "987", "988", "989"
+    ];
+
+    const esArabe = disallowedPrefixes.some(pref => senderNum.startsWith(pref));
+
+    if (esArabe) {
+      // Bloquear al árabe
+      await sock.updateBlockStatus(sender, "block");
+
+      // Obtener el número del propio bot
+      const myJid = sock.user.id.split(":")[0] + "@s.whatsapp.net";
+
+      // Notificar al bot mismo
+      await sock.sendMessage(myJid, {
+        text: `📛 *Número árabe bloqueado automáticamente:*\n\n🧿 Número: wa.me/${senderNum}\n📩 Intentó escribir al bot en privado.\n\n✅ El número fue bloqueado.`
+      });
+
+      // Mensaje al árabe bloqueado (opcional)
+      await sock.sendMessage(sender, {
+        text: "🚫 Este bot no acepta mensajes privados de números árabes. Has sido bloqueado automáticamente."
+      });
+
+      return;
+    }
+  }
+} catch (e) {
+  console.error("❌ Error en bloqueo automático de árabes:", e);
+}
+// === FIN BLOQUEO AUTOMÁTICO DE NÚMEROS ÁRABES EN PRIVADO ===
+
     
 // 🔐 Modo Privado activado
     if (activos.modoPrivado) {
@@ -1160,6 +1232,7 @@ try {
       // 🔒 En privado si no es de la lista, no responde
       if (!isGroup && !fromMe && !isOwner(sender) && !isAllowedUser(sender)) return;
     }
+
 // === INICIO BLOQUEO DE COMANDOS SI EL BOT ESTÁ APAGADO EN EL GRUPO ===
 try {
   const activosPath = "./activos.json";

@@ -5717,78 +5717,7 @@ case 'minar2': {
     break;
 }
         
-case 'topuser': {
-  try {
-    // Reacción inicial
-    await sock.sendMessage(msg.key.remoteJid, { 
-      react: { text: "🏆", key: msg.key } 
-    });
-    
-    const rpgFile = "./rpg.json";
-    if (!fs.existsSync(rpgFile)) {
-      return sock.sendMessage(msg.key.remoteJid, {
-        text: `❌ *No hay datos de RPG. Usa \`${global.prefix}crearcartera\` para empezar.*`
-      }, { quoted: msg });
-    }
-    
-    let rpgData = JSON.parse(fs.readFileSync(rpgFile, "utf-8"));
-    let usuarios = rpgData.usuarios;
-    if (!usuarios || Object.keys(usuarios).length === 0) {
-      return sock.sendMessage(msg.key.remoteJid, {
-        text: "❌ *No hay usuarios registrados aún.*"
-      }, { quoted: msg });
-    }
-    
-    // Crear array para el ranking de usuarios basado en su nivel
-    let ranking = [];
-    for (let id in usuarios) {
-      let user = usuarios[id];
-      // Solo consideramos usuarios que tengan datos básicos de nivel y habilidades
-      if (typeof user.nivel === "number") {
-        let habilidades = Object.entries(user.habilidades || {})
-          .map(([key, value]) => `${key} (Nivel ${value.nivel || value})`)
-          .join(", ");
-        ranking.push({
-          id,
-          nombre: user.nombre,
-          nivel: user.nivel,
-          rango: user.rango || "Sin rango",
-          habilidades: habilidades || "Sin habilidades"
-        });
-      }
-    }
-    
-    // Ordenar el ranking por nivel descendente
-    ranking.sort((a, b) => b.nivel - a.nivel);
-    
-    // Construir mensaje del ranking
-    let mensajeRanking = "🏆 *Ranking de Jugadores* 🏆\n━━━━━━━━━━━━━━━━━━━━\n";
-    ranking.forEach((user, index) => {
-      mensajeRanking += `🥇 *#${index + 1} - @${user.id.split('@')[0]}*\n`;
-      mensajeRanking += `🎮 *Nivel:* ${user.nivel}\n`;
-      mensajeRanking += `📊 *Rango:* ${user.rango}\n`;
-      mensajeRanking += `⚡ *Habilidades:* ${user.habilidades}\n`;
-      mensajeRanking += "━━━━━━━━━━━━━━━━━━━━\n\n";
-    });
-    
-    // Enviar el ranking con la imagen de fondo
-    await sock.sendMessage(msg.key.remoteJid, { 
-      image: { url: "https://cdn.dorratz.com/files/1741194763651.jpg" },
-      caption: mensajeRanking,
-      mentions: ranking.map(u => u.id)
-    }, { quoted: msg });
-    
-  } catch (error) {
-    console.error("❌ Error en el comando .topuser:", error);
-    await sock.sendMessage(msg.key.remoteJid, { 
-      text: `❌ *Ocurrió un error al generar el ranking de jugadores. Inténtalo de nuevo.*`
-    }, { quoted: msg });
-    await sock.sendMessage(msg.key.remoteJid, { 
-      react: { text: "❌", key: msg.key }
-    });
-  }
-  break;
-}
+
 
 case 'topmascotas': {
   try {
@@ -13745,7 +13674,7 @@ case 'info':
         
         
 
-case "ping":
+case "pong":
     try {
         const now = new Date();
         const options = { 
@@ -13792,7 +13721,7 @@ case "ping":
         // Enviar mensaje con imagen y detalles del servidor
         await sock.sendMessage(msg.key.remoteJid, {
             image: { url: "https://cdn.dorratz.com/files/1740372224017.jpg" }, 
-            caption: `🏓 *Pong! El bot está activo.*\n\n` +
+            caption: `🏓 *Ping! El bot está activo.*\n\n` +
                      `📅 *Fecha y hora actual:* ${formattedDate}\n\n` +
                      `🕒 *Tiempo Activo:* ${uptimeFormatted}\n\n` +
                      `💻 *Información del Servidor:*\n` +
@@ -14865,41 +14794,3 @@ case "fb":
 
 module.exports = { handleCommand };
 
-function loadSubPlugins() {
-  const plugins = [];
-  const pluginDir = path.join(__dirname, 'plugins2');
-  if (!fs.existsSync(pluginDir)) return plugins;
-  const files = fs.readdirSync(pluginDir).filter(f => f.endsWith('.js'));
-  for (const file of files) {
-    const plugin = require(path.join(pluginDir, file));
-    if (plugin && plugin.command) plugins.push(plugin);
-  }
-  return plugins;
-}
-
-const subPlugins = loadSubPlugins();
-
-async function handleSubCommand(sock, msg, command, args) {
-  const lowerCommand = command.toLowerCase();
-  const text = args.join(" ");
-  const plugin = subPlugins.find(p => p.command.includes(lowerCommand));
-  if (plugin) {
-    return plugin(msg, {
-      conn: sock,
-      text,
-      args,
-      command: lowerCommand,
-      usedPrefix: "."
-    });
-  }
-}
-
-
-//----------------------------------     
-let file = require.resolve(__filename)
-fs.watchFile(file, () => {
-fs.unwatchFile(file)
-console.log(chalk.redBright(`Update ${__filename}`))
-delete require.cache[file]
-require(file)
-})

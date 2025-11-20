@@ -78,8 +78,7 @@ async function perplexityQuery(q, prompt) {
   return data.response;
 }
   //lumi
-  // index.js — Azura Ultra 2.0 (CJS + import dinámico ESM-safe)
-// index.js — parche ESM-safe (sin cambiar la lógica de vinculación)
+// index.js — parche ESM-safe sin cambiar tu flujo de vinculación
 const axios = require("axios");
 const fetch = require("node-fetch");
 const chalk = require("chalk");
@@ -107,7 +106,10 @@ function isAllowedUser(sender) {
 const pathConfig = "./activos.json";
 function cargarModos() {
   if (!fs.existsSync(pathConfig)) {
-    fs.writeFileSync(pathConfig, JSON.stringify({ modoPrivado: false, modoAdmins: {} }, null, 2));
+    fs.writeFileSync(
+      pathConfig,
+      JSON.stringify({ modoPrivado: false, modoAdmins: {} }, null, 2)
+    );
   }
   return JSON.parse(fs.readFileSync(pathConfig, "utf-8"));
 }
@@ -116,9 +118,8 @@ function guardarModos(data) {
 }
 let modos = cargarModos();
 
-// ======================= PARCHE: envolver todo en una IIFE async =======================
+// ======================= PARCHE: IIFE async + import dinámico =======================
 (async () => {
-  // PARCHE: importar Baileys vía import() para evitar ERR_REQUIRE_ESM en CJS
   const {
     default: makeWASocket,
     useMultiFileAuthState,
@@ -127,25 +128,23 @@ let modos = cargarModos();
     downloadContentFromMessage
   } = await import("@whiskeysockets/baileys");
 
-  // Carga de credenciales y estado de autenticación (dentro de la IIFE, no top-level)
+  // auth state (dentro de IIFE para evitar top-level await en CJS)
   const { state, saveCreds } = await useMultiFileAuthState("./sessions");
 
-  // Configuración de consola
+  // consola
   console.log(chalk.cyan(figlet.textSync("Azura Ultra Bot", { font: "Standard" })));
   console.log(chalk.green("\n✅ Iniciando conexión...\n"));
-
-  // ✅ Mostrar opciones de conexión bien presentadas
   console.log(chalk.yellow("📡 ¿Cómo deseas conectarte?\n"));
   console.log(chalk.green("  [1] ") + chalk.white("📷 Escanear código QR"));
   console.log(chalk.green("  [2] ") + chalk.white("🔑 Ingresar código de 8 dígitos\n"));
 
-  // Manejo de entrada de usuario
+  // input
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   const question = (text) => new Promise((resolve) => rl.question(text, resolve));
 
-  let method = "1"; // Por defecto: Código QR
+  let method = "1"; // por defecto
   if (!fs.existsSync("./sessions/creds.json")) {
-    // NOTA: Mantengo exactamente tu flujo original
+    // mantengo tu mismo flujo
     method = await question(chalk.magenta("📞 Ingresa tu número (Ej: 5491168XXXX) "));
     if (!["1", "2"].includes(method)) {
       console.log(chalk.red("\n❌ Opción inválida. Reinicia el bot y elige 1 o 2."));
@@ -155,31 +154,41 @@ let modos = cargarModos();
 
   async function startBot() {
     try {
-      let { version } = await fetchLatestBaileysVersion();
+      const { version } = await fetchLatestBaileysVersion();
       const socketSettings = {
         printQRInTerminal: method === "1",
         logger: pino({ level: "silent" }),
-        auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) },
-        browser: method === "1" ? ["AzuraBot", "Safari", "1.0.0"] : ["Ubuntu", "Chrome", "20.0.04"],
+        auth: {
+          creds: state.creds,
+          keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" }))
+        },
+        browser: method === "1" ? ["AzuraBot", "Safari", "1.0.0"] : ["Ubuntu", "Chrome", "20.0.04"]
       };
 
       const sock = makeWASocket(socketSettings);
 
-      // Tu función existente; no toco su implementación
+      // tu función existente, no modifico su lógica
       setupConnection(sock);
 
-      // Si la sesión no existe y se usa el código de 8 dígitos
+      // pairing code (mantengo tu flujo exacto)
       if (!fs.existsSync("./sessions/creds.json") && method === "2") {
         let phoneNumber = await question("😎Fino vamos aya😎: ");
         phoneNumber = phoneNumber.replace(/\D/g, "");
         setTimeout(async () => {
-          let code = await sock.requestPairingCode(phoneNumber);
+          const code = await sock.requestPairingCode(phoneNumber);
           console.log(
             chalk.magenta("🔑 Código de vinculación: ") +
-            chalk.yellow(code.match(/.{1,4}/g).join("-"))
+              chalk.yellow(code.match(/.{1,4}/g).join("-"))
           );
         }, 2000);
       }
+
+      sock.ev.on("creds.update", saveCreds);
+    } catch (err) {
+      console.error("❌ Error al iniciar el bot:", err);
+      process.exit(1);
+    }
+  }
 
 //_________________
 

@@ -81,7 +81,54 @@ async function perplexityQuery(q, prompt) {
   });
   return data.response;
 }
+// ===================== Carga de plugins con logs =====================
+function loadPlugins() {
+  const plugins = [];
+  const pluginDir = path.join(__dirname, 'plugins');
 
+  if (!fs.existsSync(pluginDir)) {
+    console.log(chalk.yellow('⚠️ Carpeta "plugins" no existe.'));
+    return plugins;
+  }
+
+  const files = fs.readdirSync(pluginDir).filter(f => f.endsWith('.js'));
+  let ok = 0, fail = 0;
+
+  for (const file of files) {
+    const full = path.join(pluginDir, file);
+    try {
+      // limpiar cache para recargar limpio
+      delete require.cache[require.resolve(full)];
+      const mod = require(full);
+
+      const cmds = Array.isArray(mod.command) ? mod.command : [];
+      if (typeof mod === 'function' || cmds.length) {
+        plugins.push(mod);
+        ok++;
+        console.log(
+          chalk.green('✔︎'), chalk.white(file),
+          cmds.length ? chalk.gray(`→ [${cmds.join(', ')}]`) : chalk.gray('(handler fn)')
+        );
+      } else {
+        fail++;
+        console.log(
+          chalk.yellow('•'), chalk.white(file),
+          chalk.gray('→ export inválido (se espera function o {command:[...]})')
+        );
+      }
+    } catch (e) {
+      fail++;
+      console.log(chalk.red('✖︎'), chalk.white(file), chalk.red(`→ ${e.message}`));
+    }
+  }
+
+  console.log(
+    (fail ? chalk.yellow : chalk.green)(`🧩 Plugins cargados: ${ok}/${files.length}`) +
+    (fail ? chalk.yellow(` — fallos: ${fail}`) : '')
+  );
+
+  return plugins;
+}
 // ===================== lista permitidos =====================
 function isAllowedUser(sender) {
   const listaFile = "./lista.json";

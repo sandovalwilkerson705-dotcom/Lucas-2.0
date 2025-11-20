@@ -78,96 +78,136 @@ async function perplexityQuery(q, prompt) {
   return data.response;
 }
   //lumi
-    const axios = require("axios");
-    const fetch = require("node-fetch");
-    const { default: makeWASocket, useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } = require("@whiskeysockets/baileys");
-    const chalk = require("chalk");
-    const yargs = require('yargs/yargs')
-    const { tmpdir } = require('os')
-    const { join } = require('path')
-    const figlet = require("figlet");
-    const fs = require("fs");
-    const { readdirSync, statSync, unlinkSync } = require('fs')
-    const readline = require("readline");
-    const pino = require("pino");
-    const { isOwner, getPrefix, allowedPrefixes } = require("./config");
-    const { handleCommand } = require("./main"); 
-    // Carga de credenciales y estado de autenticación
-    const { state, saveCreds } = await useMultiFileAuthState("./sessions");
-  const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
-  //lista
+// index.js — Azura Ultra 2.0 (CJS + import dinámico ESM-safe)
+const axios = require("axios");
+const fetch = require("node-fetch");
+const chalk = require("chalk");
+const yargs = require("yargs/yargs");
+const { tmpdir } = require("os");
+const { join } = require("path");
+const figlet = require("figlet");
+const fs = require("fs");
+const { readdirSync, statSync, unlinkSync } = require("fs");
+const readline = require("readline");
+const pino = require("pino");
+
+const { isOwner, getPrefix, allowedPrefixes } = require("./config");
+const { handleCommand } = require("./main");
+
+// --------- util consola ----------
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+const ask = (q) => new Promise((r) => rl.question(q, r));
+
+// --------- lista permitidos ----------
 function isAllowedUser(sender) {
   const listaFile = "./lista.json";
   if (!fs.existsSync(listaFile)) return false;
   const lista = JSON.parse(fs.readFileSync(listaFile, "utf-8"));
-  // Extrae solo los dígitos del número para comparar
-  const num = sender.replace(/\D/g, "");
+  const num = String(sender || "").replace(/\D/g, "");
   return lista.includes(num);
 }
-    
-    //privado y admins
 
-const path = "./activos.json";
-
-// 📂 Cargar configuración de modos desde el archivo JSON
+// --------- modos (privado/admins) ----------
+const modosPath = "./activos.json";
 function cargarModos() {
-    if (!fs.existsSync(path)) {
-        fs.writeFileSync(path, JSON.stringify({ modoPrivado: false, modoAdmins: {} }, null, 2));
-    }
-    return JSON.parse(fs.readFileSync(path, "utf-8"));
+  if (!fs.existsSync(modosPath)) {
+    fs.writeFileSync(modosPath, JSON.stringify({ modoPrivado: false, modoAdmins: {} }, null, 2));
+  }
+  return JSON.parse(fs.readFileSync(modosPath, "utf-8"));
 }
-
-// 📂 Guardar configuración de modos en el archivo JSON
 function guardarModos(data) {
-    fs.writeFileSync(path, JSON.stringify(data, null, 2));
+  fs.writeFileSync(modosPath, JSON.stringify(data, null, 2));
 }
-
 let modos = cargarModos();
-    
-    // Configuración de consola
-    console.log(chalk.cyan(figlet.textSync("Azura Ultra Bot", { font: "Standard" })));    
-    console.log(chalk.green("\n✅ Iniciando conexión...\n"));
-    
-    // ✅ Mostrar opciones de conexión bien presentadas
-    console.log(chalk.yellow("📡 ¿Cómo deseas conectarte?\n"));
-    console.log(chalk.green("  [1] ") + chalk.white("📷 Escanear código QR"));
-    console.log(chalk.green("  [2] ") + chalk.white("🔑 Ingresar código de 8 dígitos\n"));
 
-    // Manejo de entrada de usuario
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const question = (text) => new Promise((resolve) => rl.question(text, resolve));
+// --------- banner ----------
+console.log(chalk.cyan(figlet.textSync("Azura Ultra Bot", { font: "Standard" })));
+console.log(chalk.green("\n✅ Iniciando conexión...\n"));
+console.log(chalk.yellow("📡 ¿Cómo deseas conectarte?\n"));
+console.log(chalk.green("  [1] ") + chalk.white("📷 Escanear código QR"));
+console.log(chalk.green("  [2] ") + chalk.white("🔑 Ingresar código de 8 dígitos\n"));
 
-    let method = "1"; // Por defecto: Código QR
-    if (!fs.existsSync("./sessions/creds.json")) {
-        method = await question(chalk.magenta("📞 Ingresa tu número (Ej: 5491168XXXX) "));
+// ======== BOOT principal (CJS + import dinámico) ========
+async function main() {
+  // Import dinámico de Baileys (evita ERR_REQUIRE_ESM en CJS)
+  const baileys = await import("@whiskeysockets/baileys");
+  const {
+    default: makeWASocket,
+    useMultiFileAuthState,
+    fetchLatestBaileysVersion,
+    makeCacheableSignalKeyStore,
+    jidDecode,
+    proto,
+    generateWAMessageFromContent,
+    downloadContentFromMessage
+  } = baileys;
 
-        if (!["1", "2"].includes(method)) {
-            console.log(chalk.red("\n❌ Opción inválida. Reinicia el bot y elige 1 o 2."));
-            process.exit(1);
-        }
+  // Exponer para plugins
+  global.BAILEYS = { proto, jidDecode, generateWAMessageFromContent };
+  global.wa = { downloadContentFromMessage };
+
+  // Auth (multi-file) en ./sessions
+  const authDir = "./sessions";
+  if (!fs.existsSync(authDir)) fs.mkdirSync(authDir, { recursive: true });
+  const { state, saveCreds } = await useMultiFileAuthState(authDir);
+
+  // Selección de método (respeta tu lógica: QR o pairing 8 dígitos)
+  let method = "1";
+  if (!fs.existsSync(join(authDir, "creds.json"))) {
+    method = await ask(chalk.magenta("➡️ Elige 1 (QR) o 2 (código 8 dígitos): "));
+    if (!["1", "2"].includes(method.trim())) {
+      console.log(chalk.red("\n❌ Opción inválida. Reinicia el bot y elige 1 o 2."));
+      process.exit(1);
     }
+  }
 
-    async function startBot() {
-        try {
-            let { version } = await fetchLatestBaileysVersion();
-            const socketSettings = {
-                printQRInTerminal: method === "1",
-                logger: pino({ level: "silent" }),
-                auth: { creds: state.creds, keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" })) },
-                browser: method === "1" ? ["AzuraBot", "Safari", "1.0.0"] : ["Ubuntu", "Chrome", "20.0.04"],
-            };
+  // Crear socket
+  const { version } = await fetchLatestBaileysVersion();
+  const sock = makeWASocket({
+    version,
+    printQRInTerminal: method === "1",
+    logger: pino({ level: "silent" }),
+    auth: {
+      creds: state.creds,
+      keys: makeCacheableSignalKeyStore(state.keys, pino({ level: "silent" }))
+    },
+    browser: method === "1" ? ["AzuraBot", "Safari", "1.0.0"] : ["Ubuntu", "Chrome", "20.0.04"]
+  });
 
-            const sock = makeWASocket(socketSettings);
-setupConnection(sock)
-            // Si la sesión no existe y se usa el código de 8 dígitos
-            if (!fs.existsSync("./sessions/creds.json") && method === "2") {
-                let phoneNumber = await question("😎Fino vamos aya😎: ");
-                phoneNumber = phoneNumber.replace(/\D/g, "");
-                setTimeout(async () => {
-                    let code = await sock.requestPairingCode(phoneNumber);
-                    console.log(chalk.magenta("🔑 Código de vinculación: ") + chalk.yellow(code.match(/.{1,4}/g).join("-")));
-                }, 2000);
-            }
+  // Guardar credenciales
+  sock.ev.on("creds.update", saveCreds);
+
+  // Conexión / reconexión
+  sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
+    if (qr && method === "1") {
+      console.log(chalk.yellow("📷 QR generado. Escanéalo desde WhatsApp > Dispositivos vinculados."));
+    }
+    if (connection === "open") {
+      console.log(chalk.green("🟢 Conectado correctamente."));
+    }
+    if (connection === "close") {
+      const reason = lastDisconnect?.error?.message || "desconocido";
+      console.log(chalk.red(`🔴 Conexión cerrada: ${reason}. Reintentando...`));
+      setTimeout(() => main().catch(console.error), 2000);
+    }
+  });
+
+  // Si no hay sesión y eligió pairing code (método 2), pedir número y mostrar código
+  if (!fs.existsSync(join(authDir, "creds.json")) && method === "2") {
+    let phoneNumber = await ask(chalk.magenta("📞 Ingresa tu número (Ej: 5491168XXXX): "));
+    phoneNumber = String(phoneNumber || "").replace(/\D/g, "");
+    setTimeout(async () => {
+      try {
+        const code = await sock.requestPairingCode(phoneNumber);
+        const bonito = String(code).replace(/(.{4})/g, "$1-").replace(/-$/, "");
+        console.log(chalk.magenta("🔑 Código de vinculación: ") + chalk.yellow(bonito));
+        console.log(chalk.gray("➡️ En WhatsApp: Ajustes > Dispositivos vinculados > Vincular con código."));
+      } catch (e) {
+        console.error(chalk.red("❌ Error generando código:"), e?.message || e);
+      }
+    }, 1200);
+  }
+
 
 //_________________
 

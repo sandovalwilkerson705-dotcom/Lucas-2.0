@@ -78,7 +78,7 @@ async function perplexityQuery(q, prompt) {
   return data.response;
 }
   //lumi
-// index.js — Azura Ultra 2.0 (CJS + import dinámico ESM-safe)
+  // index.js — Azura Ultra 2.0 (CJS + import dinámico ESM-safe)
 const axios = require("axios");
 const fetch = require("node-fetch");
 const chalk = require("chalk");

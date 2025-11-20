@@ -81,6 +81,50 @@ async function perplexityQuery(q, prompt) {
   });
   return data.response;
 }
+
+// ===================== lista permitidos =====================
+function isAllowedUser(sender) {
+  const listaFile = "./lista.json";
+  if (!fs.existsSync(listaFile)) return false;
+  const lista = JSON.parse(fs.readFileSync(listaFile, "utf-8"));
+  const num = sender.replace(/\D/g, "");
+  return lista.includes(num);
+}
+
+// ===================== modos (no tocar tu lógica) =====================
+const activosFile = "./activos.json";
+function cargarModos() {
+  if (!fs.existsSync(activosFile)) {
+    fs.writeFileSync(activosFile, JSON.stringify({ modoPrivado: false, modoAdmins: {} }, null, 2));
+  }
+  return JSON.parse(fs.readFileSync(activosFile, "utf-8"));
+}
+function guardarModos(data) {
+  fs.writeFileSync(activosFile, JSON.stringify(data, null, 2));
+}
+let modos = cargarModos();
+
+// ===================== limpieza tmp =====================
+global.opts = new Object(yargs(process.argv.slice(2)).exitProcess(false).parse());
+async function clearTmp() {
+  const tmp = [os.tmpdir(), join(__dirname, "./tmp")];
+  const filename = [];
+  tmp.forEach((dirname) => readdirSync(dirname).forEach((file) => filename.push(join(dirname, file))));
+  return filename.map((file) => {
+    const stats = statSync(file);
+    if (stats.isFile() && Date.now() - stats.mtimeMs >= 1000 * 60 * 1) return unlinkSync(file);
+    return false;
+  });
+}
+if (!opts["test"]) {
+  setInterval(async () => {
+    if (opts["autocleartmp"]) try { clearTmp(); } catch (e) { console.error(e); }
+  }, 60 * 1000);
+}
+setInterval(async () => {
+  await clearTmp();
+  console.log(chalk.cyanBright(`╭━─━─━─≪🔆≫─━─━─━╮\n│SE LIMPIO LA CARPETA TMP CORRECTAMENTE\n╰━─━─━─≪🔆≫─━─━─━╯`));
+}, 1000 * 60 * 60);
 // ===================== Carga de plugins con logs =====================
 function loadPlugins() {
   const plugins = [];
@@ -129,50 +173,6 @@ function loadPlugins() {
 
   return plugins;
 }
-// ===================== lista permitidos =====================
-function isAllowedUser(sender) {
-  const listaFile = "./lista.json";
-  if (!fs.existsSync(listaFile)) return false;
-  const lista = JSON.parse(fs.readFileSync(listaFile, "utf-8"));
-  const num = sender.replace(/\D/g, "");
-  return lista.includes(num);
-}
-
-// ===================== modos (no tocar tu lógica) =====================
-const activosFile = "./activos.json";
-function cargarModos() {
-  if (!fs.existsSync(activosFile)) {
-    fs.writeFileSync(activosFile, JSON.stringify({ modoPrivado: false, modoAdmins: {} }, null, 2));
-  }
-  return JSON.parse(fs.readFileSync(activosFile, "utf-8"));
-}
-function guardarModos(data) {
-  fs.writeFileSync(activosFile, JSON.stringify(data, null, 2));
-}
-let modos = cargarModos();
-
-// ===================== limpieza tmp =====================
-global.opts = new Object(yargs(process.argv.slice(2)).exitProcess(false).parse());
-async function clearTmp() {
-  const tmp = [os.tmpdir(), join(__dirname, "./tmp")];
-  const filename = [];
-  tmp.forEach((dirname) => readdirSync(dirname).forEach((file) => filename.push(join(dirname, file))));
-  return filename.map((file) => {
-    const stats = statSync(file);
-    if (stats.isFile() && Date.now() - stats.mtimeMs >= 1000 * 60 * 1) return unlinkSync(file);
-    return false;
-  });
-}
-if (!opts["test"]) {
-  setInterval(async () => {
-    if (opts["autocleartmp"]) try { clearTmp(); } catch (e) { console.error(e); }
-  }, 60 * 1000);
-}
-setInterval(async () => {
-  await clearTmp();
-  console.log(chalk.cyanBright(`╭━─━─━─≪🔆≫─━─━─━╮\n│SE LIMPIO LA CARPETA TMP CORRECTAMENTE\n╰━─━─━─≪🔆≫─━─━─━╯`));
-}, 1000 * 60 * 60);
-
 // ===================== arranque (parche ESM-safe) =====================
 (async () => {
   const {

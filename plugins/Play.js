@@ -1,4 +1,4 @@
-// commands/play.js — usa Sky API (sin límites) y mantiene reacciones/respuestas
+// commands/play.js — usa Adonix API (sin límites) y mantiene reacciones/respuestas
 const axios = require("axios");
 const yts = require("yt-search");
 const fs = require("fs");
@@ -8,25 +8,38 @@ const { promisify } = require("util");
 const { pipeline } = require("stream");
 const streamPipe = promisify(pipeline);
 
-// Sky API
-const API_BASE = process.env.API_BASE || "https://api-sky.ultraplus.click";
-const API_KEY  = process.env.API_KEY  || "Russellxz";
+// Adonix API
+const API_BASE = process.env.API_BASE || "https://api-adonix.ultraplus.click";
+const API_KEY = process.env.API_KEY || "DemonKeytechbot";
 
 // Almacena tareas pendientes por previewMessageId
 const pending = {};
 
-// --- helper Sky API ---
-async function skyYT(url, format) {
-  const { data, status } = await axios.get(`${API_BASE}/api/download/yt.php`, {
-    params: { url, format }, // 'audio' | 'video'
-    headers: { Authorization: `Bearer ${API_KEY}` },
+// --- helper Adonix API ---
+async function adonixYT(url, type) {
+  // type: 'audio' o 'video'
+  const endpoint = type === 'audio' ? '/download/ytaudio' : '/download/ytvideo';
+  
+  const { data, status } = await axios.get(`${API_BASE}${endpoint}`, {
+    params: { 
+      url: url,
+      apikey: API_KEY 
+    },
     timeout: 60000,
     validateStatus: s => s >= 200 && s < 600
   });
-  if (status !== 200 || !data || data.status !== "true" || !data.data) {
-    throw new Error(data?.error || `HTTP ${status}`);
+  
+  if (status !== 200 || !data || data.status !== "success") {
+    throw new Error(data?.message || `HTTP ${status}: Error en la API`);
   }
-  return data.data; // { title, thumbnail, duration, audio?, video? }
+  
+  return {
+    title: data.title || "Sin título",
+    thumbnail: data.thumbnail || null,
+    duration: data.duration || "00:00",
+    audio: type === 'audio' ? data.url : null,
+    video: type === 'video' ? data.url : null
+  };
 }
 
 // Utilidad: descarga a disco y devuelve ruta
@@ -76,7 +89,7 @@ module.exports = async (msg, { conn, text }) => {
 
   const caption = `
 ╔═══════════════╗
-║✦ 𝘼𝙕𝙐𝙍𝘼 𝙐𝗹𝘁𝗿𝗮 2.0 BOT✦
+║✦*Lucas 2.0 bot*✦
 ╚═══════════════╝
 📀 Info del video:
 ╭───────────────╮
@@ -92,9 +105,9 @@ module.exports = async (msg, { conn, text }) => {
 ┣ 📄 Audio Doc     (4 / audiodoc)
 ┗ 📁 Video Doc     (3 / videodoc)
 
-✦ Source: api-sky.ultraplus.click
+✦ Source: api-adonix.ultraplus.click
 ═════════════════════
-   𖥔 Azura Ultra 2.0 Bot 𖥔
+   𖥔 *lucas 2.0 Bot* 𖥔
 ═════════════════════`.trim();
 
   // envía preview
@@ -197,75 +210,104 @@ async function handleDownload(conn, job, choice, quotedMsg) {
 async function downloadAudio(conn, job, asDocument, quoted) {
   const { chatId, videoUrl, title } = job;
 
-  // 1) Pide a TU Sky API (audio)
-  const d = await skyYT(videoUrl, "audio");
-  const mediaUrl = d.audio || d.video; // fallback si el upstream solo da video
-  if (!mediaUrl) throw new Error("No se pudo obtener audio");
-
-  // 2) Descarga + (opcional) convierte a MP3 si no es mp3/mpeg
-  const tmp = path.join(__dirname, "../tmp");
-  if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true });
-
-  const urlPath = new URL(mediaUrl).pathname || "";
-  const ext = (urlPath.split(".").pop() || "bin").toLowerCase();
-  const isMp3 = ext === "mp3";
-
-  const inFile  = path.join(tmp, `${Date.now()}_in.${ext}`);
-  await downloadToFile(mediaUrl, inFile);
-
-  let outFile = inFile;
-  if (!isMp3) {
-    const tryOut = path.join(tmp, `${Date.now()}_out.mp3`);
-    try {
-      await new Promise((resolve, reject) =>
-        ffmpeg(inFile)
-          .audioCodec("libmp3lame")
-          .audioBitrate("128k")
-          .format("mp3")
-          .save(tryOut)
-          .on("end", resolve)
-          .on("error", reject)
-      );
-      outFile = tryOut;
-      try { fs.unlinkSync(inFile); } catch {}
-    } catch {
-      outFile = inFile; // si falla la conversión, enviamos el original
+  try {
+    // 1) Pide a Adonix API (audio)
+    await conn.sendMessage(chatId, { text: "🔗 Conectando con API de Adonix..." }, { quoted });
+    
+    const d = await adonixYT(videoUrl, "audio");
+    
+    if (!d.audio) {
+      throw new Error("La API no devolvió URL de audio");
     }
+
+    // 2) Descarga + convierte a MP3 si es necesario
+    const tmp = path.join(__dirname, "../tmp");
+    if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true });
+
+    const urlPath = new URL(d.audio).pathname || "";
+    const ext = (urlPath.split(".").pop() || "mp3").toLowerCase();
+    const isMp3 = ext === "mp3";
+
+    const inFile = path.join(tmp, `${Date.now()}_in.${ext}`);
+    await downloadToFile(d.audio, inFile);
+
+    let outFile = inFile;
+    if (!isMp3) {
+      const tryOut = path.join(tmp, `${Date.now()}_out.mp3`);
+      try {
+        await new Promise((resolve, reject) =>
+          ffmpeg(inFile)
+            .audioCodec("libmp3lame")
+            .audioBitrate("128k")
+            .format("mp3")
+            .save(tryOut)
+            .on("end", resolve)
+            .on("error", reject)
+        );
+        outFile = tryOut;
+        try { fs.unlinkSync(inFile); } catch {}
+      } catch {
+        outFile = inFile; // si falla la conversión, enviamos el original
+      }
+    }
+
+    const buffer = fs.readFileSync(outFile);
+    
+    // 3) Enviar audio
+    await conn.sendMessage(chatId, {
+      [asDocument ? "document" : "audio"]: buffer,
+      mimetype: "audio/mpeg",
+      fileName: `${title.replace(/[^\w\s]/gi, '')}.mp3`
+    }, { quoted });
+
+    // Limpiar archivos temporales
+    try { fs.unlinkSync(outFile); } catch {}
+    
+  } catch (error) {
+    console.error("Error en downloadAudio:", error);
+    await conn.sendMessage(chatId, {
+      text: `❌ Error al descargar audio: ${error.message}`
+    }, { quoted });
   }
-
-  const buffer = fs.readFileSync(outFile);
-  await conn.sendMessage(chatId, {
-    [asDocument ? "document" : "audio"]: buffer,
-    mimetype: "audio/mpeg",
-    fileName: `${title}.mp3`
-  }, { quoted });
-
-  try { fs.unlinkSync(outFile); } catch {}
 }
 
 async function downloadVideo(conn, job, asDocument, quoted) {
   const { chatId, videoUrl, title } = job;
 
-  // 1) Pide a TU Sky API (video)
-  const d = await skyYT(videoUrl, "video");
-  const mediaUrl = d.video || d.audio; // fallback
-  if (!mediaUrl) throw new Error("No se pudo obtener video");
+  try {
+    // 1) Pide a Adonix API (video)
+    await conn.sendMessage(chatId, { text: "🔗 Conectando con API de Adonix..." }, { quoted });
+    
+    const d = await adonixYT(videoUrl, "video");
+    
+    if (!d.video) {
+      throw new Error("La API no devolvió URL de video");
+    }
 
-  // 2) Descarga
-  const tmp = path.join(__dirname, "../tmp");
-  if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true });
-  const file = path.join(tmp, `${Date.now()}_vid.mp4`);
-  await downloadToFile(mediaUrl, file);
+    // 2) Descarga
+    const tmp = path.join(__dirname, "../tmp");
+    if (!fs.existsSync(tmp)) fs.mkdirSync(tmp, { recursive: true });
+    
+    const file = path.join(tmp, `${Date.now()}_vid.mp4`);
+    await downloadToFile(d.video, file);
 
-  // 3) Enviar (SIN límite propio)
-  await conn.sendMessage(chatId, {
-    [asDocument ? "document" : "video"]: fs.readFileSync(file),
-    mimetype: "video/mp4",
-    fileName: `${title}.mp4`,
-    caption: asDocument ? undefined : `🎬 Aquí tiene su video.\n✦ Source: api-sky.ultraplus.click\n© Azura Ultra`
-  }, { quoted });
+    // 3) Enviar video
+    await conn.sendMessage(chatId, {
+      [asDocument ? "document" : "video"]: fs.readFileSync(file),
+      mimetype: "video/mp4",
+      fileName: `${title.replace(/[^\w\s]/gi, '')}.mp4`,
+      caption: asDocument ? undefined : `🎬 Aquí tiene su video.\n✦ Source: api-adonix.ultraplus.click\n© Azura Ultra`
+    }, { quoted });
 
-  try { fs.unlinkSync(file); } catch {}
+    // Limpiar archivo temporal
+    try { fs.unlinkSync(file); } catch {}
+    
+  } catch (error) {
+    console.error("Error en downloadVideo:", error);
+    await conn.sendMessage(chatId, {
+      text: `❌ Error al descargar video: ${error.message}`
+    }, { quoted });
+  }
 }
 
 module.exports.command = ["play"];

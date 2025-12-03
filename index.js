@@ -16,7 +16,7 @@ const { handleCommand } = require("./main");
 const PORT = process.env.PORT || 3000;
 
 // ===================== util canal reenviado =====================
-let canalId = ["120363266665814365@newsletter"];
+let canalId = ["12036342063231678@newsletter"];
 let canalNombre = ["👾 AZURA ULTRA 2.0 BOT 👾"];
 
 function setupConnection(conn) {
